@@ -61,13 +61,14 @@ class splunk::forwarder (
   $staging_subdir  = $splunk::params::staging_subdir
 
   $path_delimiter  = $splunk::params::path_delimiter
+  #no need for staging the source if we have yum or apt
   if $pkg_provider != undef and $pkg_provider != 'yum' and  $pkg_provider != 'apt' {
     include staging
+
+    $staged_package  = staging_parse($package_source)
     $pkg_path_parts  = [$staging::path, $staging_subdir, $staged_package]
     $pkg_source      = join($pkg_path_parts, $path_delimiter)
 
-    #no need for staging the source if we have yum or apt
-    $staged_package  = staging_parse($package_source)
     staging::file { $staged_package:
       source => $package_source,
       subdir => $staging_subdir,
@@ -83,8 +84,9 @@ class splunk::forwarder (
     tag             => 'splunk_forwarder',
   }
   # Declare inputs and outputs specific to the forwarder profile
-  create_resources( 'splunkforwarder_input',$forwarder_input)
-  create_resources( 'splunkforwarder_output',$forwarder_output)
+  $tag_resources = { tag => 'splunk_forwarder' }
+  create_resources( 'splunkforwarder_input',$forwarder_input, $tag_resources)
+  create_resources( 'splunkforwarder_output',$forwarder_output, $tag_resources)
   # this is default
   ini_setting { 'forwarder_splunkd_port':
     path    => "${splunk::params::forwarder_confdir}/web.conf",
@@ -117,17 +119,23 @@ class splunk::forwarder (
   # dependency chains.
   include splunk::virtual
 
-  Package               <| title  == $package_name      |> ->
-  Exec                  <| tag    == 'splunk_forwarder' |> ->
-  Service               <| title  == $virtual_service   |>
+  realize Package[$package_name]
+  realize Service[$virtual_service]
 
-  Package               <| title  == $package_name      |> ->
-  Splunkforwarder_input <| tag    == 'splunk_forwarder' |> ~>
-  Service               <| title  == $virtual_service   |>
+  Exec <| tag == 'splunk_forwarder' |> {
+    require +> Package[$package_name],
+    before  +> Service[$virtual_service],
+  }
 
-  Package                <| title == $package_name      |> ->
-  Splunkforwarder_output <| tag   == 'splunk_forwarder' |> ~>
-  Service                <| title == $virtual_service   |>
+  Splunkforwarder_input <| tag == 'splunk_forwarder' |> {
+    require +> Package[$package_name],
+    notify  +> Service[$virtual_service],
+  }
+
+  Splunkforwarder_output <| tag == 'splunk_forwarder' |> {
+    require +> Package[$package_name],
+    notify  +> Service[$virtual_service],
+  }
 
   # Validate: if both Splunk and Splunk Universal Forwarder are installed on
   # the same system, then they must use different admin ports.

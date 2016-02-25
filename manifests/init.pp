@@ -127,22 +127,35 @@ class splunk (
 
   # This realize() call is because the collectors don't seem to work well with
   # arrays. They'll set the dependencies but not realize all Service resources
+  realize(Package[$package_name])
   realize(Service[$virtual_service])
 
-  Package       <| title == $package_name    |> ->
-  Exec          <| tag   == 'splunk_server'  |> ->
-  File          <| tag   == 'splunk_server'  |> ->
-  Service       <| title == $virtual_service |>
+  Exec <| tag == 'splunk_server' |> {
+    require +> Package[$package_name],
+    before +> Service[$virtual_service],
+  } ->
+  File <| tag == 'splunk_server' |> {
+    require +> Package[$package_name],
+    before +> Service[$virtual_service],
+  }
 
-  Package       <| title == $package_name    |> ->
-  File          <| tag   == 'splunk_server'  |> ->
-  Splunk_input  <| tag   == 'splunk_server'  |> ~>
-  Service       <| title == $virtual_service |>
+  File <| tag   == 'splunk_server' |> {
+    require +> Package[$package_name],
+    notify +> Service[$virtual_service],
+  } ->
+  Splunk_input <| tag   == 'splunk_server' |> {
+    require +> Package[$package_name],
+    notify +> Service[$virtual_service],
+  }
 
-  Package       <| title == $package_name    |> ->
-  File          <| tag   == 'splunk_server'  |> ->
-  Splunk_output <| tag   == 'splunk_server'  |> ~>
-  Service       <| title == $virtual_service |>
+  File <| tag == 'splunk_server'  |> {
+    require +> Package[$package_name],
+    notify +> Service[$virtual_service],
+  } ->
+  Splunk_output <| tag == 'splunk_server' |> {
+    require +> Package[$package_name],
+    notify +> Service[$virtual_service],
+  }
 
   # Validate: if both Splunk and Splunk Universal Forwarder are installed on
   # the same system, then they must use different admin ports.
